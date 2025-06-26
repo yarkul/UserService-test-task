@@ -1,0 +1,6 @@
+@UserServiceTestProject_HostAddress = http://localhost:5166
+
+GET {{UserServiceTestProject_HostAddress}}/user/
+Accept: application/json
+
+###

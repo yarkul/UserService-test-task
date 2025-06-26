@@ -1,60 +1,124 @@
-public class UserService
+using Microsoft.EntityFrameworkCore;
+using UserServiceTestProject.DbContexts;
+using UserServiceTestProject.DbContexts.DbModels;
+using UserServiceTestProject.Responses;
+
+public interface IUserService
 {
-    public void CreateUser(string name, string email, string password, string role)
+    Task<UserCreatedResponse> CreateUserAsync(UserCreateRequestDto request);
+    Task<UserListResponse> GetAllUsersAsync();
+    Task UpdateUserRoleAsync(int userId, string newRole);
+}
+
+public class UserService : IUserService
+{
+    private readonly UserDbContext _dbContext;
+
+    public UserService(UserDbContext dbContext)
     {
-        if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password))
+        _dbContext = dbContext;
+    }
+
+    public async Task<UserCreatedResponse> CreateUserAsync(UserCreateRequestDto request)
+    {
+        var response = new UserCreatedResponse
         {
-            throw new Exception("Invalid input");
+            Success = true,
+            ErrorMessages = new List<string>()
+        };
+
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            response.Success = false;
+            response.ErrorMessages.Add("Name is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Email))
+        {
+            response.Success = false;
+            response.ErrorMessages.Add("Email is required.");
         }
 
         var emailRegex = new System.Text.RegularExpressions.Regex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$");
-        if (!emailRegex.IsMatch(email))
+        if (!emailRegex.IsMatch(request.Email))
         {
-            throw new Exception("Invalid email");
+            response.Success = false;
+            response.ErrorMessages.Add("Invalid email format.");
         }
 
-        var passwordHash = BCrypt.Net.BCrypt.HashPassword(password);
-
-        using (var db = new SqlConnection("connectionString"))
+        if (string.IsNullOrWhiteSpace(request.Password))
         {
-            db.Open();
-            var command = new SqlCommand($"INSERT INTO Users (Name, Email, PasswordHash, Role) VALUES ('{name}', '{email}', '{passwordHash}', '{role}')", db);
-            command.ExecuteNonQuery();
+            response.Success = false;
+            response.ErrorMessages.Add("Password is required.");
         }
+
+        if (string.IsNullOrWhiteSpace(request.Role))
+        {
+            response.Success = false;
+            response.ErrorMessages.Add("Role is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Role)
+            && (!request.Role.Equals("Admin") && !request.Role.Equals("User")))
+        {
+            response.Success = false;
+            response.ErrorMessages.Add("Role must be either 'Admin' or 'User'.");
+        }
+
+        if (!response.Success)
+        {
+            return response;
+        }
+
+        var passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
+
+        var user = new User
+        {
+            Name = request.Name,
+            Email = request.Email,
+            PasswordHash = passwordHash,
+            Role = request.Role
+        };
+
+        _dbContext.Users.Add(user);
+        await _dbContext.SaveChangesAsync();
+        response.Id = user.Id;
+
+        return response;
     }
 
-    public List<string> GetUsers()
+    public async Task<UserListResponse> GetAllUsersAsync()
     {
-        var users = new List<string>();
+        var dbUsers = await _dbContext.Users.AsNoTracking().ToListAsync();
 
-        using (var db = new SqlConnection("connectionString"))
+        var result = new UserListResponse()
         {
-            db.Open();
-            var command = new SqlCommand("SELECT Name FROM Users", db);
-            using (var reader = command.ExecuteReader())
-            {
-                while (reader.Read())
-                {
-                    users.Add(reader.GetString(0));
-                }
-            }
-        }
+            Users = dbUsers
+        };
 
-        return users;
+        return result;
     }
 
-    public void UpdateUserRole(int userId, string newRole)
+    public async Task UpdateUserRoleAsync(int userId, string newRole)
     {
-        if (newRole != "Admin" && newRole != "User")
+        if (userId <= 0)
+        {
+            throw new Exception("Invalid user id");
+        }
+
+        if (string.IsNullOrWhiteSpace(newRole)
+            || (!newRole.Equals("Admin") && !newRole.Equals("User")))
         {
             throw new Exception("Invalid role");
         }
 
-        using (var db = new SqlConnection("connectionString"))
+        var user = await _dbContext.Users.FindAsync(userId);
+
+        if (user is null)
         {
-            db.Open();
-            var command = new SqlCommand($"UPDATE Users SET Role = '{newRole}' WHERE Id = {userId}", db);
-            command.ExecuteNonQuery();
+            throw new Exception("User not found");
         }
+        user.Role = newRole;
+        await _dbContext.SaveChangesAsync();
     }
 }

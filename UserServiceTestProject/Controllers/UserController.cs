@@ -12,11 +12,5 @@ namespace UserServiceTestProject.Controllers
         {
             _logger = logger;
         }
-
-        [HttpGet(Name = "User")]
-        public IEnumerable<WeatherForecast> Get()
-        {
-            return default;
-        }
     }
 }

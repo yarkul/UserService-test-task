@@ -1,124 +1,128 @@
 using Microsoft.EntityFrameworkCore;
 using UserServiceTestProject.DbContexts;
 using UserServiceTestProject.DbContexts.DbModels;
+using UserServiceTestProject.Requests;
 using UserServiceTestProject.Responses;
 
-public interface IUserService
+namespace UserServiceTestProject.Services
 {
-    Task<UserCreatedResponse> CreateUserAsync(UserCreateRequestDto request);
-    Task<UserListResponse> GetAllUsersAsync();
-    Task UpdateUserRoleAsync(int userId, string newRole);
-}
-
-public class UserService : IUserService
-{
-    private readonly UserDbContext _dbContext;
-
-    public UserService(UserDbContext dbContext)
+    public interface IUserService
     {
-        _dbContext = dbContext;
+        Task<UserCreatedResponse> CreateUserAsync(UserCreateRequestDto request);
+        Task<UserListResponse> GetAllUsersAsync();
+        Task UpdateUserRoleAsync(int userId, string newRole);
     }
 
-    public async Task<UserCreatedResponse> CreateUserAsync(UserCreateRequestDto request)
+    public class UserService : IUserService
     {
-        var response = new UserCreatedResponse
-        {
-            Success = true,
-            ErrorMessages = new List<string>()
-        };
+        private readonly UserDbContext _dbContext;
 
-        if (string.IsNullOrWhiteSpace(request.Name))
+        public UserService(UserDbContext dbContext)
         {
-            response.Success = false;
-            response.ErrorMessages.Add("Name is required.");
+            _dbContext = dbContext;
         }
 
-        if (string.IsNullOrWhiteSpace(request.Email))
+        public async Task<UserCreatedResponse> CreateUserAsync(UserCreateRequestDto request)
         {
-            response.Success = false;
-            response.ErrorMessages.Add("Email is required.");
-        }
+            var response = new UserCreatedResponse
+            {
+                Success = true,
+                ErrorMessages = new List<string>()
+            };
 
-        var emailRegex = new System.Text.RegularExpressions.Regex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$");
-        if (!emailRegex.IsMatch(request.Email))
-        {
-            response.Success = false;
-            response.ErrorMessages.Add("Invalid email format.");
-        }
+            if (string.IsNullOrWhiteSpace(request.Name))
+            {
+                response.Success = false;
+                response.ErrorMessages.Add("Name is required.");
+            }
 
-        if (string.IsNullOrWhiteSpace(request.Password))
-        {
-            response.Success = false;
-            response.ErrorMessages.Add("Password is required.");
-        }
+            if (string.IsNullOrWhiteSpace(request.Email))
+            {
+                response.Success = false;
+                response.ErrorMessages.Add("Email is required.");
+            }
 
-        if (string.IsNullOrWhiteSpace(request.Role))
-        {
-            response.Success = false;
-            response.ErrorMessages.Add("Role is required.");
-        }
+            var emailRegex = new System.Text.RegularExpressions.Regex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$");
+            if (!emailRegex.IsMatch(request.Email))
+            {
+                response.Success = false;
+                response.ErrorMessages.Add("Invalid email format.");
+            }
 
-        if (string.IsNullOrWhiteSpace(request.Role)
-            && (!request.Role.Equals("Admin") && !request.Role.Equals("User")))
-        {
-            response.Success = false;
-            response.ErrorMessages.Add("Role must be either 'Admin' or 'User'.");
-        }
+            if (string.IsNullOrWhiteSpace(request.Password))
+            {
+                response.Success = false;
+                response.ErrorMessages.Add("Password is required.");
+            }
 
-        if (!response.Success)
-        {
+            if (string.IsNullOrWhiteSpace(request.Role))
+            {
+                response.Success = false;
+                response.ErrorMessages.Add("Role is required.");
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Role)
+                && (!request.Role.Equals("Admin") && !request.Role.Equals("User")))
+            {
+                response.Success = false;
+                response.ErrorMessages.Add("Role must be either 'Admin' or 'User'.");
+            }
+
+            if (!response.Success)
+            {
+                return response;
+            }
+
+            var passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
+
+            var user = new User
+            {
+                Name = request.Name,
+                Email = request.Email,
+                PasswordHash = passwordHash,
+                Role = request.Role
+            };
+
+            _dbContext.Users.Add(user);
+            await _dbContext.SaveChangesAsync();
+            response.Id = user.Id;
+
             return response;
         }
 
-        var passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
-
-        var user = new User
+        public async Task<UserListResponse> GetAllUsersAsync()
         {
-            Name = request.Name,
-            Email = request.Email,
-            PasswordHash = passwordHash,
-            Role = request.Role
-        };
+            var dbUsers = await _dbContext.Users.AsNoTracking().ToListAsync();
 
-        _dbContext.Users.Add(user);
-        await _dbContext.SaveChangesAsync();
-        response.Id = user.Id;
+            var result = new UserListResponse()
+            {
+                Users = dbUsers
+            };
 
-        return response;
-    }
-
-    public async Task<UserListResponse> GetAllUsersAsync()
-    {
-        var dbUsers = await _dbContext.Users.AsNoTracking().ToListAsync();
-
-        var result = new UserListResponse()
-        {
-            Users = dbUsers
-        };
-
-        return result;
-    }
-
-    public async Task UpdateUserRoleAsync(int userId, string newRole)
-    {
-        if (userId <= 0)
-        {
-            throw new Exception("Invalid user id");
+            return result;
         }
 
-        if (string.IsNullOrWhiteSpace(newRole)
-            || (!newRole.Equals("Admin") && !newRole.Equals("User")))
+        public async Task UpdateUserRoleAsync(int userId, string newRole)
         {
-            throw new Exception("Invalid role");
-        }
+            if (userId <= 0)
+            {
+                throw new Exception("Invalid user id");
+            }
 
-        var user = await _dbContext.Users.FindAsync(userId);
+            if (string.IsNullOrWhiteSpace(newRole)
+                || (!newRole.Equals("Admin") && !newRole.Equals("User")))
+            {
+                throw new Exception("Invalid role");
+            }
 
-        if (user is null)
-        {
-            throw new Exception("User not found");
+            var user = await _dbContext.Users.FindAsync(userId);
+
+            if (user is null)
+            {
+                throw new Exception("User not found");
+            }
+            user.Role = newRole;
+            await _dbContext.SaveChangesAsync();
         }
-        user.Role = newRole;
-        await _dbContext.SaveChangesAsync();
     }
 }

@@ -1,0 +1,4 @@
+There were a few AI promts to ChatGpt:
+1) Write an example of a simple WebSocket controller with one method that updates user role. Use UserService.cs file.
+2) Write xUnit tests for UserService.cs class. I want to use InMemoryDatabase to mock DbContext.
+3) What is the nuget package name for BCrypt.Net.BCrypt.HashPassword? is this a good option to hash passwords?
